@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict'),E=require('./engine.js'),{create}=require('./host.js');
+(async()=>{
+assert.equal(E.power(-1),0);assert.equal(E.power(99),1);assert.equal(E.distance(0),44);assert.equal(E.distance(1),304);console.log('PASS bounded power and distance');
+const target={x:270,y:286,width:84},ideal=(270-90-44)/260;
+assert.equal(E.landing(90,target,ideal).perfect,true);assert.equal(E.landing(90,target,0).hit,false);assert.equal(E.landing(90,target,1).hit,false);console.log('PASS center landing, undershoot and overshoot');
+for(let i=0;i<200;i++){const p=E.next({x:i*200},()=>i/200),d=p.x-i*200;assert(d>=145&&d<=210);assert(p.width>=78&&p.width<=96);const charge=(d-44)/260;assert(E.landing(i*200,p,charge).perfect);}console.log('PASS all generated island ranges are reachable');
+assert.equal(E.points(false,0),10);assert.equal(E.points(true,1),25);assert.equal(E.points(true,50),70);console.log('PASS score and capped perfect bonus');
+let callbacks={},sent=[],ready=[],fail=false;const sdk={IN_PLAYABLES_ENV:true,system:{isAudioEnabled:()=>false,onAudioEnabledChange:f=>callbacks.audio=f,onPause:f=>callbacks.pause=f,onResume:f=>callbacks.resume=f},game:{async loadData(){if(fail)throw Error('offline');return '{"schema":1,"best":50,"sound":true}';},async saveData(v){sent.push(JSON.parse(v));},firstFrameReady(){ready.push('frame');},gameReady(){ready.push('ready');}}};
+const host=create(sdk);assert.equal(host.audio,false);await host.init();assert.equal(host.data.best,50);host.update(25,true);await host.flush();assert.equal(sent.at(-1).best,50);host.update(75,false);await host.flush();assert.equal(sent.at(-1).best,75);console.log('PASS cloud persistence and monotonic best');
+callbacks.pause();assert.equal(host.paused,true);callbacks.resume();assert.equal(host.paused,false);callbacks.audio(true);assert.equal(host.audio,true);host.firstFrame();host.ready();assert.deepEqual(ready,['frame','ready']);console.log('PASS SDK pause/audio and ready order');
+fail=true;const failed=create(sdk),before=sent.length;await assert.rejects(failed.init());failed.update(100,true);await failed.flush();assert.equal(sent.length,before);console.log('PASS failed load cannot overwrite a save');
+const local=new Map();global.localStorage={getItem:k=>local.get(k)||null,setItem:(k,v)=>local.set(k,v)};const normal=create();await normal.init();normal.update(10,true);await normal.flush();normal.update(40,false);await normal.flush();assert.equal(JSON.parse(local.get('hop_islands_v1')).best,40);console.log('PASS successive browser saves complete without blocking');
+})().catch(e=>{console.error(e);process.exitCode=1;});
